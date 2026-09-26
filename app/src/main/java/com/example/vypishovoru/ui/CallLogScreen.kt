@@ -26,6 +26,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.vypishovoru.model.CallLogItem
+import com.example.vypishovoru.model.buildCallLogContentDescription
+import com.example.vypishovoru.model.displayName
+import com.example.vypishovoru.model.organizationSubtitle
 import com.example.vypishovoru.viewmodel.CallLogViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -203,12 +206,11 @@ fun CallLogListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clearAndSetSemantics {
-                contentDescription = listOf(
-                    log.name ?: "Neznámý kontakt",
-                    "Číslo: $accessiblePhoneNumber",
-                    "Datum: $formattedDate",
-                    "Délka hovoru: ${log.accessibleDuration}"
-                ).joinToString(". ")
+                contentDescription = buildCallLogContentDescription(
+                    log = log,
+                    accessiblePhoneNumber = accessiblePhoneNumber,
+                    formattedDate = formattedDate
+                )
                 collectionItemInfo = CollectionItemInfo(
                     rowIndex = index,
                     rowSpan = 1,
@@ -223,9 +225,16 @@ fun CallLogListItem(
                 .padding(16.dp)
         ) {
             Text(
-                text = log.name ?: "Neznámý kontakt",
+                text = log.displayName,
                 style = MaterialTheme.typography.titleMedium
             )
+            log.organizationSubtitle?.let { subtitle ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "Číslo: ${log.number}",

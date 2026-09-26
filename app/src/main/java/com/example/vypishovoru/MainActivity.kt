@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,7 +24,10 @@ import com.example.vypishovoru.viewmodel.CallLogViewModel
 class MainActivity : ComponentActivity() {
 
     private val viewModel: CallLogViewModel by viewModels()
-    private var isPermissionGranted by mutableStateOf(false)
+    // READ_CALL_LOG je povinné pro výpis; READ_CONTACTS je volitelné obohacení (firma).
+    // Odmítnutí READ_CONTACTS nikdy neblokuje hlavní funkci.
+    private var isCallLogGranted by mutableStateOf(false)
+    private var isContactsGranted by mutableStateOf(false)
     private var themeMode by mutableStateOf(AppThemeMode.SYSTEM)
 
     private val exportCsvLauncher = registerForActivityResult(
@@ -41,11 +43,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        isPermissionGranted = isGranted
-        if (isGranted) {
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants: Map<String, Boolean> ->
+        val callLogNow = grants[Manifest.permission.READ_CALL_LOG] ?: hasCallLogPermission()
+        val contactsNow = grants[Manifest.permission.READ_CONTACTS] ?: hasContactsPermission()
+        isCallLogGranted = callLogNow
+        isContactsGranted = contactsNow
+        if (callLogNow) {
+            // I při odmítnutém READ_CONTACTS pokračuj: ViewModel bezpečně vrátí organization=null.
             viewModel.fetchCallLogs()
         }
     }
@@ -54,11 +60,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         themeMode = loadThemeMode()
         
-        isPermissionGranted = hasCallLogPermission()
-        if (isPermissionGranted) {
+        isCallLogGranted = hasCallLogPermission()
+        isContactsGranted = hasContactsPermission()
+        if (isCallLogGranted) {
             viewModel.fetchCallLogs()
         } else {
-            requestPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+            requestPermissionsLauncher.launch(
+                arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)
+            )
         }
 
         setContent {
@@ -67,7 +76,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    if (isPermissionGranted) {
+                    if (isCallLogGranted) {
                         CallLogScreen(
                             viewModel = viewModel,
                             themeMode = themeMode,
@@ -76,11 +85,28 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         PermissionDeniedScreen {
-                            requestPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+                            requestPermissionsLauncher.launch(
+                                arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check po návratu ze systémového nastavení (odebrání/udělení).
+        // Nikdy zde automaticky nespouštíme request — jen synchronizujeme stav a případně reload.
+        // Tím je vyloučen nekonečný cyklus žádostí při každém onResume.
+        val callLogNow = hasCallLogPermission()
+        val contactsNow = hasContactsPermission()
+        val changed = (callLogNow != isCallLogGranted) || (contactsNow != isContactsGranted)
+        isCallLogGranted = callLogNow
+        isContactsGranted = contactsNow
+        if (changed && callLogNow) {
+            viewModel.fetchCallLogs()
         }
     }
 
@@ -101,13 +127,19 @@ class MainActivity : ComponentActivity() {
         this, Manifest.permission.READ_CALL_LOG
     ) == PackageManager.PERMISSION_GRANTED
 
+    private fun hasContactsPermission() = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.READ_CONTACTS
+    ) == PackageManager.PERMISSION_GRANTED
+
     private fun checkAndRequestPermission() {
         when {
             hasCallLogPermission() -> {
                 viewModel.fetchCallLogs()
             }
             else -> {
-                requestPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+                requestPermissionsLauncher.launch(
+                    arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)
+                )
             }
         }
     }
