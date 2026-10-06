@@ -39,7 +39,11 @@ fun CallLogScreen(
     viewModel: CallLogViewModel,
     themeMode: AppThemeMode,
     onThemeModeSelected: (AppThemeMode) -> Unit,
-    onExportClick: () -> Unit
+    onExportClick: () -> Unit,
+    isContactsGranted: Boolean = true,
+    isContactsPermanentlyDenied: Boolean = false,
+    onRequestContacts: () -> Unit = {},
+    onOpenSettings: () -> Unit = {}
 ) {
     val callLogs by viewModel.callLogs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -155,6 +159,13 @@ fun CallLogScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if (!isContactsGranted) {
+                ContactsPermissionBanner(
+                    isPermanentlyDenied = isContactsPermanentlyDenied,
+                    onRequestContacts = onRequestContacts,
+                    onOpenSettings = onOpenSettings
+                )
+            }
             Box(modifier = Modifier.fillMaxSize()) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -183,6 +194,60 @@ fun CallLogScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ContactsPermissionBanner(
+    isPermanentlyDenied: Boolean,
+    onRequestContacts: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .semantics {
+                contentDescription = "Informační panel: Pro zobrazení firem povolte kontakty"
+            },
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Pro zobrazení firem povolte kontakty",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            )
+            if (isPermanentlyDenied) {
+                TextButton(
+                    modifier = Modifier.semantics {
+                        contentDescription = "Otevřít nastavení pro povolení kontaktů"
+                        role = Role.Button
+                    },
+                    onClick = onOpenSettings
+                ) {
+                    Text("Otevřít nastavení")
+                }
+            } else {
+                TextButton(
+                    modifier = Modifier.semantics {
+                        contentDescription = "Povolit přístup ke kontaktům pro zobrazení firem"
+                        role = Role.Button
+                    },
+                    onClick = onRequestContacts
+                ) {
+                    Text("Povolit")
                 }
             }
         }

@@ -7,6 +7,8 @@ import android.provider.ContactsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vypishovoru.model.CallLogItem
+import com.example.vypishovoru.model.escapeCsvField
+import com.example.vypishovoru.model.pickFirstNonBlank
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,10 +44,12 @@ class CallLogViewModel(application: Application) : AndroidViewModel(application)
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val csvHeader = "Jméno,Organizace,Číslo,Trvání (s),Datum\n"
         val csvRows = _callLogs.value.joinToString("\n") {
-            val name = it.name?.replace(",", " ") ?: ""
-            val org = it.organization?.replace(",", " ") ?: ""
-            // Apostrof před číslem zajistí, že Excel bude hodnotu brát jako text a ne jako vzorec
-            val formattedNumber = "'${it.number}"
+            val name = escapeCsvField(it.name ?: "")
+            val org = escapeCsvField(it.organization ?: "")
+            // Apostrof před číslem zajistí, že Excel bude hodnotu brát jako text a ne jako vzorec.
+            // Uvozovky v čísle jsou zdvojeny, pole je vždy v uvozovkách (konzistentní CSV).
+            val safeNumber = it.number.replace("\"", "\"\"")
+            val formattedNumber = "'$safeNumber"
             val formattedDate = sdf.format(Date(it.date))
             "${name},${org},\"${formattedNumber}\",${it.duration},${formattedDate}"
         }
@@ -123,38 +127,39 @@ class CallLogViewModel(application: Application) : AndroidViewModel(application)
         return try {
             val context = getApplication<Application>().applicationContext
             val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber))
-            
-            var lookupKey: String? = null
+
+            var contactId: Long? = null
             context.contentResolver.query(
                 uri,
-                arrayOf(ContactsContract.PhoneLookup.LOOKUP_KEY),
+                arrayOf(ContactsContract.PhoneLookup.CONTACT_ID),
                 null,
                 null,
                 null
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
-                    val index = cursor.getColumnIndex(ContactsContract.PhoneLookup.LOOKUP_KEY)
-                    if (index != -1) lookupKey = cursor.getString(index)
+                    val index = cursor.getColumnIndex(ContactsContract.PhoneLookup.CONTACT_ID)
+                    if (index != -1) contactId = cursor.getLong(index)
                 }
             }
 
-            if (lookupKey == null) return null
+            val id = contactId ?: return null
 
             context.contentResolver.query(
                 ContactsContract.Data.CONTENT_URI,
                 arrayOf(ContactsContract.CommonDataKinds.Organization.COMPANY),
-                "${ContactsContract.Data.LOOKUP_KEY} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
-                arrayOf(lookupKey, ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE),
+                "${ContactsContract.Data.CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+                arrayOf(id.toString(), ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE),
                 // Deterministické pořadí při více Organization řádcích: první abecedně.
                 "${ContactsContract.CommonDataKinds.Organization.COMPANY} COLLATE NOCASE ASC"
             )?.use { orgCursor ->
                 val index = orgCursor.getColumnIndex(ContactsContract.CommonDataKinds.Organization.COMPANY)
                 if (index != -1) {
+                    val companies = mutableListOf<String?>()
                     while (orgCursor.moveToNext()) {
-                        // Prázdný/whitespace COMPANY se nesmí vrátit jako "".
-                        val company = orgCursor.getString(index)?.takeIf { it.isNotBlank() }
-                        if (company != null) return company
+                        companies.add(orgCursor.getString(index))
                     }
+                    // Prázdný/whitespace COMPANY se nesmí vrátit jako "".
+                    return pickFirstNonBlank(companies)
                 }
             }
             null
