@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.example.vypishovoru.ui.AppThemeMode
 import com.example.vypishovoru.ui.CallLogScreen
 import com.example.vypishovoru.ui.VypisHovoruTheme
+import com.example.vypishovoru.model.encodeCsvFileBytes
 import com.example.vypishovoru.viewmodel.CallLogViewModel
 
 class MainActivity : ComponentActivity() {
@@ -40,9 +41,8 @@ class MainActivity : ComponentActivity() {
         uri?.let {
             contentResolver.openOutputStream(it)?.use { outputStream ->
                 val csvData = viewModel.generateCsvData()
-                val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
-                outputStream.write(bom)
-                outputStream.write(csvData.toByteArray(Charsets.UTF_8))
+                // Přesně jeden UTF-8 BOM na začátku souboru, před `sep=,`; text již direktivu obsahuje.
+                outputStream.write(encodeCsvFileBytes(csvData))
             }
         }
     }

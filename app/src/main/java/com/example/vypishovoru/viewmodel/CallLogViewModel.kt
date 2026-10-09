@@ -7,7 +7,7 @@ import android.provider.ContactsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vypishovoru.model.CallLogItem
-import com.example.vypishovoru.model.escapeCsvField
+import com.example.vypishovoru.model.buildCallLogCsv
 import com.example.vypishovoru.model.pickFirstNonBlank
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,18 +42,11 @@ class CallLogViewModel(application: Application) : AndroidViewModel(application)
 
     fun generateCsvData(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val csvHeader = "Jméno,Organizace,Číslo,Trvání (s),Datum\n"
-        val csvRows = _callLogs.value.joinToString("\n") {
-            val name = escapeCsvField(it.name ?: "")
-            val org = escapeCsvField(it.organization ?: "")
-            // Apostrof před číslem zajistí, že Excel bude hodnotu brát jako text a ne jako vzorec.
-            // Uvozovky v čísle jsou zdvojeny, pole je vždy v uvozovkách (konzistentní CSV).
-            val safeNumber = it.number.replace("\"", "\"\"")
-            val formattedNumber = "'$safeNumber"
-            val formattedDate = sdf.format(Date(it.date))
-            "${name},${org},\"${formattedNumber}\",${it.duration},${formattedDate}"
+        // První řádek `sep=,` je direktiva pro desktopový Excel (viz CsvUtils),
+        // BOM se přidává až při zápisu souboru v MainActivity.
+        return buildCallLogCsv(_callLogs.value) { timestamp ->
+            sdf.format(Date(timestamp))
         }
-        return csvHeader + csvRows
     }
 
     fun toggleSortOrder() {
